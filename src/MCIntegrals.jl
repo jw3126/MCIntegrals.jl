@@ -1,7 +1,7 @@
 module MCIntegrals
 
 export MCVanilla, Vegas
-export integral
+export integral, ∫
 
 using QuickTypes
 using ArgCheck
@@ -20,6 +20,7 @@ end
 function integral(f, domain, alg=Vegas)
     integral_alg(f, domain, alg)
 end
+const ∫ = integral
 
 function integral_alg(f, (a,b), alg::MCVanilla)
     N = alg.neval
@@ -43,6 +44,7 @@ function integral_alg(f, (a,b), alg::MCVanilla)
     (value = mean*vol, std=std*vol)
 end
 
+# TODO renames, this is not really Vegas algorithm
 @qstruct Vegas(
     neval::Int=10^4,
     ) do

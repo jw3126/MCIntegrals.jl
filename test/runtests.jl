@@ -11,7 +11,8 @@ function isconsistent(truth, est; nstd=6, kw_approx...)
     end
 end
 
-@testset "integral $alg" for alg in [
+
+@testset "∫(f, (a,b), $alg)" for alg in [
         MCVanilla(10^4),
         Vegas(10^4),
        ]
@@ -29,7 +30,7 @@ end
         for _ in 1:10
             a = 10randn()
             b = a + 10rand()
-            est = integral(f, (a,b), alg)
+            est = ∫(f, (a,b), alg)
             truth = F(b) - F(a)
             @test isconsistent(truth, est)
         end
