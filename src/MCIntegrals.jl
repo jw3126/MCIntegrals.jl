@@ -102,8 +102,7 @@ end
     @argcheck neval > 2
 end <: MCAlgorithm
 
-
-@qstruct Stratification{N,T}(
+@qstruct VegasGrid{N,T}(
     boundaries::NTuple{N,Vector{T}}
    ) do
     for i in 1:N
@@ -138,7 +137,7 @@ function linterpol(x, (x_min, x_max), (y_min, y_max))
     end
 end
 
-function importance_quantiles(cdf::CDF, nwalls)
+function quantiles(cdf::CDF, nwalls)
     ret = [first(cdf.positions)]
     qvals = range(first(cdf.values), stop=last(cdf.values), length=nwalls)
     i = 1
@@ -159,27 +158,27 @@ function importance_quantiles(cdf::CDF, nwalls)
     ret
 end
 
-function Base.size(s::Stratification)
+function Base.size(s::VegasGrid)
     map(s.boundaries) do b
         length(b) - 1
     end
 end
-Base.length(s::Stratification) = prod(size(s))
-Base.eachindex(s::Stratification) = CartesianIndices(s)
-Base.axes(s::Stratification) = map(Base.OneTo, size(s))
-function Base.CartesianIndices(s::Stratification)
+Base.length(s::VegasGrid) = prod(size(s))
+Base.eachindex(s::VegasGrid) = CartesianIndices(s)
+Base.axes(s::VegasGrid) = map(Base.OneTo, size(s))
+function Base.CartesianIndices(s::VegasGrid)
     CartesianIndices(axes(s))
 end
-function Base.LinearIndices(s::Stratification)
+function Base.LinearIndices(s::VegasGrid)
     LinearIndices(axes(s))
 end
 
-function rand_index(s::Stratification)
+function rand_index(s::VegasGrid)
     li = rand(LinearIndices(s))
     CartesianIndices(s)[li]
 end
 
-function Base.getindex(s::Stratification, index::CartesianIndex)
+function Base.getindex(s::VegasGrid, index::CartesianIndex)
     lower = map(s.boundaries, Tuple(index)) do walls, i
         walls[i]
     end
@@ -189,7 +188,7 @@ function Base.getindex(s::Stratification, index::CartesianIndex)
     Domain(SVector(lower), SVector(upper))
 end
 
-function create_sample(s::Stratification)
+function create_sample(s::VegasGrid)
     i = rand_index(s)
     cell = s[i]
     x = uniform(cell)
@@ -212,7 +211,7 @@ function estimate_cdf(histogram)
     CDF(xs, cdf_values)
 end
 
-function tune(f, iq::Stratification; neval=1000, outsize=size(iq))
+function tune(f, iq::VegasGrid; neval=1000, outsize=size(iq))
     hists = map(iq.boundaries) do xs
         n = length(xs)
         (
@@ -237,13 +236,13 @@ function tune(f, iq::Stratification; neval=1000, outsize=size(iq))
     bdries_new = map(hists, outsize) do h, ncells
         nwalls = ncells + 1
         cdf = estimate_cdf(h)
-        importance_quantiles(cdf, nwalls)
+        quantiles(cdf, nwalls)
     end
 
-    Stratification(bdries_new)
+    VegasGrid(bdries_new)
 end
 
-function integral_alg(f, iq::Stratification, alg::Vegas)
+function integral_alg(f, iq::VegasGrid, alg::Vegas)
     N = alg.neval
     sum = 0.
     sum2 = 0.
@@ -266,7 +265,7 @@ function default_strat_size(dom::Domain{N}) where {N}
     ntuple(_ -> 100, Val(N))
 end
 
-function equidistant_stratification(
+function equidistant_grid(
         dom::Domain, 
         size=default_strat_size(dom)
     )
@@ -276,11 +275,11 @@ function equidistant_stratification(
         r = range(lo, stop=hi, length=nwalls)
         collect(r)
     end
-    Stratification(bdries)
+    VegasGrid(bdries)
 end
 
 function integral_alg(f, dom::Domain, alg::Vegas)
-    iq = equidistant_stratification(dom)
+    iq = equidistant_grid(dom)
     iq = tune(f, iq, neval=2000)
     iq = tune(f, iq, neval=2000)
     iq = tune(f, iq, neval=2000)
