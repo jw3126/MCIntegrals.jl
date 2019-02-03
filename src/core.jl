@@ -127,6 +127,10 @@ function domain(iq::VegasGrid)
     Domain(SVector(lo), SVector(hi))
 end
 
+function volume(iq::VegasGrid)
+    volume(domain(iq))
+end
+
 function uniform(iq::VegasGrid)
     uniform(domain(iq))
 end
@@ -275,7 +279,7 @@ end
 function integral_kernel(f, dom::VegasGrid, alg::Vegas)
     N = alg.neval
     x = uniform(dom)
-    y = float(f(x))
+    y = float(f(x)) * volume(dom)
     sum = y
     sum2 = y.^2
     for _ in 1:(N-1)

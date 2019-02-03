@@ -49,8 +49,8 @@ function isconsistent(truth, est; nstd=6, kw_approx...)
 end
 
 @testset "constant $(alg)" for alg in [
-    Vegas(10^3),
-    MCVanilla(10^2),
+    Vegas(10^1),
+    MCVanilla(10^1),
     ]
     for dim in 1:4
         for _ in 1:10
@@ -63,7 +63,7 @@ end
             vol = prod(upper .- lower)
             truth = val * vol
             @test isconsistent(truth, est)
-            @test est.std < 1e-2
+            @test est.std < 1e-3
         end
     end
 end
@@ -139,4 +139,31 @@ end
         est  = ∫(f , dom , alg)
         @test isconsistent(est1.value*est2.value, est)
     end
+end
+
+@testset "Simple Vegas Example" begin
+    a = -0.237267860990952
+    b = -0.19099487884978464
+    val = 0.665843778891144
+    truth = 0.030810577289437303
+    @assert truth ≈ (b - a) * val
+    f = _ -> val
+    Ω = Domain((a,b))
+    
+    alg = Vegas(5)
+    est = ∫(f, Ω, alg)
+    @test est.value ≈ truth
+    @test 0 <= est.std <= sqrt(eps(Float64))
+    
+    iq = P.initvr(f, Ω, alg)
+    est = ∫(f, iq, alg)
+    @test est.value ≈ truth
+    @test 0 <= est.std <= sqrt(eps(Float64))
+    
+    iq2 = P.tune(f, Ω, alg)
+    est = ∫(f, iq2, alg)
+    @test est.value ≈ truth
+    @test 0 <= est.std <= sqrt(eps(Float64))
+    walls = iq2.boundaries[1]
+    @test walls ≈ range(a,stop=b, length=length(walls))
 end
