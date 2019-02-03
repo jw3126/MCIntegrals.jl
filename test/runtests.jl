@@ -8,8 +8,6 @@ using LinearAlgebra
     dom = Domain((1f0, 2f0))
     @test P.pointtype(typeof(dom)) === SVector{1, Float32}
     @test P.volume(dom) === 1f0
-
-
 end
 
 @testset "exotic types $(typeof(alg))" for alg in [

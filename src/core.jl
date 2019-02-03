@@ -78,25 +78,7 @@ end
 const ∫ = integral
 
 function integral_kernel(f, dom::Domain, alg::MCVanilla)
-    N = alg.neval
-    x = uniform(alg.rng, dom)
-    y = float(f(x))
-    sum = y
-    sum2 = y.^2
-    for _ in 1:(N-1)
-        x = uniform(alg.rng, dom)
-        y = f(x)
-        sum += y
-        sum2 += y.^2
-    end
-    
-    vol = volume(dom)
-    mean = sum/N
-    var_f = (sum2/N) - mean .^2
-    var_f = max(zero(var_f), var_f)
-    var_fmean = var_f / N
-    std = sqrt.(var_fmean)
-    (value = mean*vol, std=std*vol)
+    mc_kernel(f, alg.rng, dom, neval=alg.neval)
 end
 
 abstract type VegasDamping end
@@ -213,12 +195,23 @@ function Base.getindex(s::VegasGrid, index::CartesianIndex)
     Domain(SVector(lower), SVector(upper))
 end
 
-function create_sample(rng, s::VegasGrid)
+function draw_x_index_cell(rng, s::VegasGrid)
     i = rand_index(rng,s)
     cell = s[i]
     x = uniform(rng, cell)
-    # wt = volume(cell)
-    (x=x, index=i, cell=cell)
+    (position=x, index=i, cell=cell)
+end
+
+function draw(rng, dom::Domain)
+    vol = volume(dom)
+    x = uniform(rng, dom)
+    (position=x, weight = volume(dom))
+end
+
+function draw(rng, iq::VegasGrid)
+    s = draw_x_index_cell(rng, iq)
+    wt = volume(s.cell) * length(iq)
+    (position=s.position, weight = wt)
 end
 
 function estimate_pdf(histogram, ::NoDamping)
@@ -248,8 +241,8 @@ function tuneonce(f, iq::VegasGrid,
               neval=1000, 
               outsize=size(iq),
             )
-    s = create_sample(alg.rng, iq)
-    y = float(norm(f(s.x)))
+    s = draw_x_index_cell(alg.rng, iq)
+    y = float(norm(f(s.position)))
 
     hists = map(iq.boundaries) do xs
         nbins = length(xs) - 1
@@ -261,8 +254,8 @@ function tuneonce(f, iq::VegasGrid,
     end
 
     for _ in 1:neval
-        s = create_sample(alg.rng, iq)
-        y = norm(f(s.x))
+        s = draw_x_index_cell(alg.rng, iq)
+        y = norm(f(s.position))
         cell = s.cell
         for i in eachindex(iq.boundaries)
             h = hists[i]
@@ -282,15 +275,26 @@ function tuneonce(f, iq::VegasGrid,
 end
 
 function integral_kernel(f, dom::VegasGrid, alg::Vegas)
-    N = alg.neval
-    x = uniform(alg.rng, dom)
+    mc_kernel(f, alg.rng, dom; neval=alg.neval)
+end
+
+"""
+    mc_kernel(f, rng::AbstractRNG, dom; neval)
+
+Monte Carlo integration of function `f` over `dom`.
+`dom` must support the following methods:
+* volume(dom): Return the volume of dom
+* draw(rng, dom): Return an object with properties `position::SVector`, `weight::Real`.
+"""
+function mc_kernel(f, rng::AbstractRNG, dom; neval)
+    N = neval
+    x = uniform(rng, dom)
     y = float(f(x)) * volume(dom)
     sum = y
     sum2 = y.^2
     for _ in 1:(N-1)
-        s = create_sample(alg.rng, dom)
-        wt = volume(s.cell) * length(dom)
-        y = wt * f(s.x)
+        s = draw(rng, dom)
+        y = s.weight * f(s.position)
         sum += y
         sum2 += y.^2
     end
