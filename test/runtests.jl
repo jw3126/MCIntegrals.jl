@@ -1,12 +1,41 @@
 using MCIntegrals
+const P = MCIntegrals
 using Test
 using StaticArrays
 using LinearAlgebra
 
-@testset "exotic types $alg" for alg in [
-        Vegas(10), MCVanilla(10)]
-    @show ∫(indentity, (0f0, 1f0))
+@testset "Domain" begin
+    dom = Domain((1f0, 2f0))
+    @test P.pointtype(typeof(dom)) === SVector{1, Float32}
+    @test P.volume(dom) === 1f0
 
+
+end
+
+@testset "exotic types $alg" for alg in [
+        MCVanilla(10),
+        Vegas(10), 
+       ]
+    est = ∫(identity, (0f0, 1f0), alg)
+    @test typeof(est.value) === Float32
+    @test typeof(est.std) === Float32
+
+    est = ∫(_ -> true, (0f0, 1f0), alg)
+    @test typeof(est.value) === Float64
+    @test typeof(est.std) === Float64
+
+    est = ∫(identity, (0, 1), alg)
+    @test typeof(est.value) === Float64
+    @test typeof(est.std) === Float64
+
+    est = ∫(identity, (big"0", big"1"), alg)
+    @test typeof(est.value) === BigFloat
+    @test typeof(est.std) === BigFloat
+
+    v = @SVector[1.,2.]
+    est = ∫(_ -> v, (0,1), alg)
+    @test typeof(est.value) === typeof(v)
+    @test typeof(est.std)   === typeof(est.value)
 end
 
 function isconsistent(truth, est; nstd=6, kw_approx...)
@@ -20,7 +49,7 @@ function isconsistent(truth, est; nstd=6, kw_approx...)
 end
 
 @testset "constant $(alg)" for alg in [
-    Vegas(10^2),
+    Vegas(10^3),
     MCVanilla(10^2),
     ]
     for dim in 1:4

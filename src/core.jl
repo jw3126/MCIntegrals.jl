@@ -23,9 +23,9 @@ struct Domain{N,T}
     upper::SVector{N,T}
 end
 
-function cartesian_product(d1::Domain, d2::Domain)
-    Domain(vcat(d1.lower, d2.lower), vcat(d1.upper, d2.upper))
-end
+# function cartesian_product(d1::Domain, d2::Domain)
+#     Domain(vcat(d1.lower, d2.lower), vcat(d1.upper, d2.upper))
+# end
 
 function pointtype(::Type{Domain{N,T}}) where {N,T}
     SVector{N,T}
@@ -76,22 +76,22 @@ const ∫ = integral
 function integral_kernel(f, dom::Domain, alg::MCVanilla)
     N = alg.neval
     x = uniform(dom)
-    y = f(x)
+    y = float(f(x))
     sum = y
-    sum2 = y^2
+    sum2 = y.^2
     for _ in 1:(N-1)
         x = uniform(dom)
         y = f(x)
         sum += y
-        sum2 += y^2
+        sum2 += y.^2
     end
     
     vol = volume(dom)
     mean = sum/N
-    var_f = (sum2/N) - mean^2
+    var_f = (sum2/N) - mean .^2
     var_f = max(zero(var_f), var_f)
     var_fmean = var_f / N
-    std = sqrt(var_fmean)
+    std = sqrt.(var_fmean)
     (value = mean*vol, std=std*vol)
 end
 
@@ -121,9 +121,19 @@ end <: MCAlgorithm
     end
 end
 
-@qstruct CDF(
-    positions::Vector{Float64}, 
-    values::Vector{Float64}, 
+function domain(iq::VegasGrid)
+    lo = map(first, iq.boundaries)
+    hi = map(last , iq.boundaries)
+    Domain(SVector(lo), SVector(hi))
+end
+
+function uniform(iq::VegasGrid)
+    uniform(domain(iq))
+end
+
+@qstruct CDF{P,V}(
+    positions::Vector{P}, 
+    values::Vector{V}, 
     ) do
     @argcheck first(values) == 0.
     @argcheck issorted(values)
@@ -160,10 +170,6 @@ function quantiles(cdf::CDF, nwalls)
         q = linterpol(qval, xs, ys)
         push!(ret, q)
     end
-    # if i != length(cdf.values)
-    #     @show cdf.values
-    # end
-    # @assert i == length(cdf.values)
     @assert length(ret) == nwalls
     ret
 end
@@ -206,7 +212,6 @@ function create_sample(s::VegasGrid)
     (x=x, index=i, cell=cell)
 end
 
-
 function estimate_pdf(histogram, ::NoDamping)
     pdf = map(/, histogram.sums, histogram.counts)
     pdf ./= sum(pdf)
@@ -216,7 +221,7 @@ end
 function estimate_pdf(histogram, r::LepageDamping)
     pdf = estimate_pdf(histogram, NoDamping())
     updf = map(pdf) do p
-        ((p -1) / log(p))^r.alpha
+        ((p - 1) / log(p))^r.alpha
     end
     normalize!(updf, 1)
 end
@@ -234,12 +239,15 @@ function tuneonce(f, iq::VegasGrid;
               outsize=size(iq),
               regularization::VegasDamping=LepageDamping(),
             )
+    s = create_sample(iq)
+    y = float(norm(f(s.x)))
+
     hists = map(iq.boundaries) do xs
-        n = length(xs)
+        nbins = length(xs) - 1
         (
             walls = xs,
-            counts = fill(0, n-1),
-            sums = fill(0., n-1),
+            counts = fill(0, nbins),
+            sums = fill(zero(typeof(y)), nbins),
         )
     end
 
@@ -264,32 +272,35 @@ function tuneonce(f, iq::VegasGrid;
     VegasGrid(bdries_new)
 end
 
-function integral_kernel(f, iq::VegasGrid, alg::Vegas)
+function integral_kernel(f, dom::VegasGrid, alg::Vegas)
     N = alg.neval
-    sum = 0.
-    sum2 = 0.
-    for _ in 1:N
-        s = create_sample(iq)
-        wt = volume(s.cell) * length(iq)
-        y = f(s.x) * wt
+    x = uniform(dom)
+    y = float(f(x))
+    sum = y
+    sum2 = y.^2
+    for _ in 1:(N-1)
+        s = create_sample(dom)
+        wt = volume(s.cell) * length(dom)
+        y = wt * f(s.x)
         sum += y
-        sum2 += y^2
+        sum2 += y.^2
     end
+    
     mean = sum/N
-    var_f = (sum2/N) - mean^2
-    var_f = max(0., var_f)
+    var_f = (sum2/N) - mean .^2
+    var_f = max(zero(var_f), var_f)
     var_fmean = var_f / N
-    std = sqrt(var_fmean)
+    std = sqrt.(var_fmean)
     (value = mean, std=std)
 end
 
-function default_strat_size(dom::Domain{N}) where {N}
+function default_grid_size(dom::Domain{N}) where {N}
     ntuple(_ -> 100, Val(N))
 end
 
 function equidistant_grid(
         dom::Domain, 
-        size=default_strat_size(dom)
+        size=default_grid_size(dom)
     )
 
     bdries = map(Tuple(dom.lower), Tuple(dom.upper), size) do lo, hi, nbins
