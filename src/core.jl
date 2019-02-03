@@ -57,15 +57,15 @@ function uniform(dom::Domain)
 end
 
 function integral(f, dom, alg=Vegas())
-    f2, dom2, alg2 = resolve_domain(f, dom, alg)
+    f2, dom2, alg2 = canonicalize(f, dom, alg)
     integral_kernel(f2, dom2, alg2)
 end
 
-function resolve_domain(f, dom, alg)
+function canonicalize(f, dom, alg)
     f, Domain(dom), alg
 end
 
-function resolve_domain(f, I::NTuple{2,Number}, alg)
+function canonicalize(f, I::NTuple{2,Number}, alg)
     f_v = f ∘ first
     dom = Domain(I)
     f_v, dom, alg
@@ -322,6 +322,6 @@ function integral_kernel(f, dom::Domain, alg::Vegas)
     integral_kernel(f, iq, alg)
 end
 
-function resolve_domain(f, dom::VegasGrid, alg::Vegas)
+function canonicalize(f, dom::VegasGrid, alg::Vegas)
     f, dom, alg
 end

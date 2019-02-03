@@ -3,6 +3,12 @@ using Test
 using StaticArrays
 using LinearAlgebra
 
+@testset "exotic types $alg" for alg in [
+        Vegas(10), MCVanilla(10)]
+    @show ∫(indentity, (0f0, 1f0))
+
+end
+
 function isconsistent(truth, est; nstd=6, kw_approx...)
     val = est.value
     Δ = nstd * est.std
