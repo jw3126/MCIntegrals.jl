@@ -12,7 +12,7 @@ using LinearAlgebra
 
 end
 
-@testset "exotic types $alg" for alg in [
+@testset "exotic types $(typeof(alg))" for alg in [
         MCVanilla(10),
         Vegas(10), 
        ]
@@ -48,7 +48,7 @@ function isconsistent(truth, est; nstd=6, kw_approx...)
     end
 end
 
-@testset "constant $(alg)" for alg in [
+@testset "constant $(typeof(alg))" for alg in [
     Vegas(10^1),
     MCVanilla(10^1),
     ]
@@ -78,7 +78,7 @@ end
     @test est_vanilla.std < 1e-2
 end
 
-@testset "∫(f, (a,b), $alg)" for alg in [
+@testset "∫(f, (a,b), $(typeof(alg)))" for alg in [
         MCVanilla(10^4),
         Vegas(10^4),
        ]
@@ -103,7 +103,7 @@ end
     end
 end
 
-@testset "Ball $alg" for alg in [
+@testset "Ball $(typeof(alg))" for alg in [
     MCVanilla(10^4),
     Vegas(10^4)]
 
@@ -119,7 +119,7 @@ end
 end
 
 
-@testset "Fubini $alg" for alg in [
+@testset "Fubini $(typeof(alg))" for alg in [
     MCVanilla(10^4),
     Vegas(10^4)]
     for _ in 1:10
@@ -145,8 +145,7 @@ end
     a = -0.237267860990952
     b = -0.19099487884978464
     val = 0.665843778891144
-    truth = 0.030810577289437303
-    @assert truth ≈ (b - a) * val
+    truth = (b - a) * val
     f = _ -> val
     Ω = Domain((a,b))
     

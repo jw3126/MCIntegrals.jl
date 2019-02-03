@@ -2,15 +2,19 @@
 export MCVanilla, Vegas, Domain
 export integral, ∫
 
-using QuickTypes
+using QuickTypes: @qstruct
 using ArgCheck
 using LinearAlgebra, Statistics
 using StaticArrays
+import Random
 
 abstract type MCAlgorithm end
 
-@qstruct MCVanilla(neval::Int64=10^6) do
-    @argcheck neval > 2
+@qstruct MCVanilla{R}(
+        neval::Int64=10^6,
+        rng::R=Random.GLOBAL_RNG,
+    ) do
+        @argcheck neval > 2
 end <: MCAlgorithm
 
 """
@@ -50,10 +54,10 @@ function Domain(lims)
     Domain(lower, upper)
 end
 
-function uniform(dom::Domain)
+function uniform(rng, dom::Domain)
     V = pointtype(typeof(dom))
     Δ = (dom.upper - dom.lower)
-    dom.lower .+ rand(V) .* Δ
+    dom.lower .+ rand(rng, V) .* Δ
 end
 
 function integral(f, dom, alg=Vegas())
@@ -75,12 +79,12 @@ const ∫ = integral
 
 function integral_kernel(f, dom::Domain, alg::MCVanilla)
     N = alg.neval
-    x = uniform(dom)
+    x = uniform(alg.rng, dom)
     y = float(f(x))
     sum = y
     sum2 = y.^2
     for _ in 1:(N-1)
-        x = uniform(dom)
+        x = uniform(alg.rng, dom)
         y = f(x)
         sum += y
         sum2 += y.^2
@@ -105,11 +109,12 @@ Damping for quantile estimation as proposed in original Vegas Paper by Lepage.
     alpha::T=1) <: VegasDamping
 
 # TODO renames, this is not really Vegas algorithm
-@qstruct Vegas{R}(
-    neval::Int=10^4,
-    regularization::R=LepageDamping(),
+@qstruct Vegas{RNG,REG}(
+        neval::Int=10^4,
+        rng::RNG=Random.GLOBAL_RNG,
+        regularization::REG=LepageDamping(),
     ) do
-    @argcheck neval > 2
+        @argcheck neval > 2
 end <: MCAlgorithm
 
 @qstruct VegasGrid{N,T}(
@@ -131,8 +136,8 @@ function volume(iq::VegasGrid)
     volume(domain(iq))
 end
 
-function uniform(iq::VegasGrid)
-    uniform(domain(iq))
+function uniform(rng, iq::VegasGrid)
+    uniform(rng, domain(iq))
 end
 
 @qstruct CDF{P,V}(
@@ -193,8 +198,8 @@ function Base.LinearIndices(s::VegasGrid)
     LinearIndices(axes(s))
 end
 
-function rand_index(s::VegasGrid)
-    li = rand(LinearIndices(s))
+function rand_index(rng, s::VegasGrid)
+    li = rand(rng, LinearIndices(s))
     CartesianIndices(s)[li]
 end
 
@@ -208,10 +213,10 @@ function Base.getindex(s::VegasGrid, index::CartesianIndex)
     Domain(SVector(lower), SVector(upper))
 end
 
-function create_sample(s::VegasGrid)
-    i = rand_index(s)
+function create_sample(rng, s::VegasGrid)
+    i = rand_index(rng,s)
     cell = s[i]
-    x = uniform(cell)
+    x = uniform(rng, cell)
     # wt = volume(cell)
     (x=x, index=i, cell=cell)
 end
@@ -230,20 +235,20 @@ function estimate_pdf(histogram, r::LepageDamping)
     normalize!(updf, 1)
 end
 
-function estimate_cdf(histogram, r::VegasDamping)
-    pdf = estimate_pdf(histogram, r)
+function estimate_cdf(histogram, alg::Vegas)
+    pdf = estimate_pdf(histogram, alg.regularization)
     cdf_vals = cumsum(pdf)
     z = zero(eltype(cdf_vals))
     pushfirst!(cdf_vals, z)
     CDF(histogram.walls, cdf_vals)
 end
 
-function tuneonce(f, iq::VegasGrid; 
+function tuneonce(f, iq::VegasGrid,
+              alg::Vegas=Vegas();
               neval=1000, 
               outsize=size(iq),
-              regularization::VegasDamping=LepageDamping(),
             )
-    s = create_sample(iq)
+    s = create_sample(alg.rng, iq)
     y = float(norm(f(s.x)))
 
     hists = map(iq.boundaries) do xs
@@ -256,7 +261,7 @@ function tuneonce(f, iq::VegasGrid;
     end
 
     for _ in 1:neval
-        s = create_sample(iq)
+        s = create_sample(alg.rng, iq)
         y = norm(f(s.x))
         cell = s.cell
         for i in eachindex(iq.boundaries)
@@ -269,7 +274,7 @@ function tuneonce(f, iq::VegasGrid;
 
     bdries_new = map(hists, outsize) do h, ncells
         nwalls = ncells + 1
-        cdf = estimate_cdf(h, regularization)
+        cdf = estimate_cdf(h, alg)
         quantiles(cdf, nwalls)
     end
 
@@ -278,12 +283,12 @@ end
 
 function integral_kernel(f, dom::VegasGrid, alg::Vegas)
     N = alg.neval
-    x = uniform(dom)
+    x = uniform(alg.rng, dom)
     y = float(f(x)) * volume(dom)
     sum = y
     sum2 = y.^2
     for _ in 1:(N-1)
-        s = create_sample(dom)
+        s = create_sample(alg.rng, dom)
         wt = volume(s.cell) * length(dom)
         y = wt * f(s.x)
         sum += y
@@ -320,11 +325,11 @@ function initvr(f, dom::Domain, alg::Vegas)
 end
 
 function tune(f, iq::VegasGrid, alg::Vegas)
-    iq = tuneonce(f, iq, neval=2000)
-    iq = tuneonce(f, iq, neval=2000)
-    iq = tuneonce(f, iq, neval=2000)
-    iq = tuneonce(f, iq, neval=2000)
-    iq = tuneonce(f, iq, neval=2000)
+    iq = tuneonce(f, iq, alg, neval=2000)
+    iq = tuneonce(f, iq, alg, neval=2000)
+    iq = tuneonce(f, iq, alg, neval=2000)
+    iq = tuneonce(f, iq, alg, neval=2000)
+    iq = tuneonce(f, iq, alg, neval=2000)
 end
 
 function tune(f, dom::Domain, alg)
