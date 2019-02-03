@@ -42,6 +42,10 @@ function volume(dom::Domain)
     prod(dom.upper - dom.lower)
 end
 
+function Base.ndims(dom::Domain{N,T}) where {N,T}
+    N
+end
+
 function Domain(interval::NTuple{2,Number})
     (a,b) = float.(promote(interval...))
     Domain(@SVector[a], @SVector[b])

@@ -5,6 +5,7 @@ using StaticArrays
 using LinearAlgebra
 using Random
 using Setfield
+using Cuba: vegas
 
 function isconsistent(truth, est; nstd=6, kw_approx...)
     val = est.value
@@ -40,6 +41,7 @@ end
 @testset "exotic types $(typeof(alg))" for alg in [
         MCVanilla(10),
         Vegas(10), 
+        CubaAlg(vegas),
        ]
     est = ∫(identity, (0f0, 1f0), alg)
     @test typeof(est.value) === Float32
@@ -83,6 +85,7 @@ end
 @testset "constant $(typeof(alg))" for alg in [
     Vegas(10^1),
     MCVanilla(10^1),
+    CubaAlg(vegas),
     ]
     for dim in 1:4
         for _ in 1:10

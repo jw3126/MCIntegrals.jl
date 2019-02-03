@@ -1,5 +1,6 @@
 import Random
 using Random: AbstractRNG, MersenneTwister
+using Base.Threads: nthreads
 
 # TODO use KissThreading, for parallelization 
 # once it is on metadata
@@ -21,6 +22,6 @@ function rand(p::ParallelRNG, args...)
 end
 
 const GLOBAL_PAR_RNG = let
-    rngs = map(MersenneTwister, 1:Sys.CPU_THREADS)
+    rngs = map(MersenneTwister, 1:nthreads())
     ParallelRNG(rngs)
 end
