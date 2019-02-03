@@ -307,7 +307,7 @@ function mc_kernel(f, rng::AbstractRNG, dom; neval)
     var_f = max(zero(var_f), var_f)
     var_fmean = var_f / N
     std = sqrt.(var_fmean)
-    (value = mean, std=std)
+    (value = mean, std=std, neval=N)
 end
 
 function mc_kernel(f, p::ParallelRNG, dom; neval)
@@ -321,42 +321,49 @@ function mc_kernel(f, p::ParallelRNG, dom; neval)
         res = mc_kernel(f, rngs[i], dom, neval=neval_i)
         results[i] = res
     end
-    reduce(fuse, results)
+    fuseall(results)
 end
 
-function fuse(res1, res2)
-    var1 = res1.std .^ 2
-    var2 = res2.std .^ 2
-    w1, w2 = fusion_weights(var1, var2)
-    (
-        value = @.(w1 * res1.value + w2*res2.value),
-        std = @.(sqrt(w1^2*var1 + w2^2*var2))
-    )
+function fuseall(results)
+    N = sum(res->res.neval, results)
+    value = sum(res->res.value * res.neval/N   , results)
+    var   = sum(res->(res.std * res.neval/N).^2, results)
+    (value=value, std=sqrt.(var), neval=N)
 end
 
-function fusion_weights(var1::AbstractVector, var2::AbstractVector)
-    pairs = fusion_weights_scalar.(var1, var2)
-    first.(pairs), last.(pairs)
-end
-
-function fusion_weights(var1, var2)
-    fusion_weights_scalar(var1, var2)
-end
-
-function fusion_weights_scalar(var1, var2)
-    z = zero(var1)
-    o = one(var1)
-    if iszero(var1)
-        (o, z)
-    elseif iszero(var2)
-        (z,o)
-    else
-        p1 = o/var1
-        p2 = o/var2
-        p  = p1 + p2
-        (p1/p, p2/p)
-    end
-end
+# function fuse(res1, res2)
+#     var1 = res1.std .^ 2
+#     var2 = res2.std .^ 2
+#     w1, w2 = fusion_weights(var1, var2)
+#     (
+#         value = @.(w1 * res1.value + w2*res2.value),
+#         std = @.(sqrt(w1^2*var1 + w2^2*var2))
+#     )
+# end
+# 
+# function fusion_weights(var1::AbstractVector, var2::AbstractVector)
+#     pairs = fusion_weights_scalar.(var1, var2)
+#     first.(pairs), last.(pairs)
+# end
+# 
+# function fusion_weights(var1, var2)
+#     fusion_weights_scalar(var1, var2)
+# end
+# 
+# function fusion_weights_scalar(var1, var2)
+#     z = zero(var1)
+#     o = one(var1)
+#     if iszero(var1)
+#         (o, z)
+#     elseif iszero(var2)
+#         (z,o)
+#     else
+#         p1 = o/var1
+#         p2 = o/var2
+#         p  = p1 + p2
+#         (p1/p, p2/p)
+#     end
+# end
 
 function default_grid_size(dom::Domain{N}) where {N}
     ntuple(_ -> 100, Val(N))

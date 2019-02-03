@@ -6,6 +6,17 @@ using LinearAlgebra
 using Random
 using Setfield
 
+function isconsistent(truth, est; nstd=6, kw_approx...)
+    val = est.value
+    Δ = nstd * est.std
+    if ≈(val, truth; kw_approx...)
+        true
+    else
+        truth - Δ <= val <= truth + Δ
+    end
+end
+
+
 ALGS = [Vegas(), MCVanilla()]
 
 @testset "RNG Reproducibility" begin
@@ -15,6 +26,8 @@ ALGS = [Vegas(), MCVanilla()]
         @set! alg.rng = MersenneTwister(1)
         res2 = ∫(cos, (0,1), alg)
         @test res1 === res2
+        res3 = ∫(cos, (0,1), alg)
+        @test !(res3 === res2)
     end
 end
 
@@ -50,16 +63,21 @@ end
     @test typeof(est.std)   === typeof(est.value)
 end
 
-# @testset "
-
-function isconsistent(truth, est; nstd=6, kw_approx...)
-    val = est.value
-    Δ = nstd * est.std
-    if ≈(val, truth; kw_approx...)
-        true
-    else
-        truth - Δ <= val <= truth + Δ
-    end
+@testset "std bernoulli" begin
+    p = 0.1 + 0.8*rand()
+    f = x -> 0 <= x <= p
+    
+    neval = 1000
+    true_value = p
+    true_std = sqrt(p*(1-p)/neval)
+    
+    est = ∫(f, (0,1), MCVanilla(neval))
+    @test est.std ≈ true_std rtol=0.2
+    @test isconsistent(true_value, est)
+    
+    est = ∫(f, (0,1), Vegas(neval))
+    @test est.std < 0.2*true_std
+    @test isconsistent(true_value, est)
 end
 
 @testset "constant $(typeof(alg))" for alg in [
@@ -180,3 +198,4 @@ end
     walls = iq2.boundaries[1]
     @test walls ≈ range(a,stop=b, length=length(walls))
 end
+
