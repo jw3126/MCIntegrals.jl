@@ -3,6 +3,20 @@ const P = MCIntegrals
 using Test
 using StaticArrays
 using LinearAlgebra
+using Random
+using Setfield
+
+ALGS = [Vegas(), MCVanilla()]
+
+@testset "RNG Reproducibility" begin
+    for alg in ALGS
+        @set! alg.rng = MersenneTwister(1)
+        res1 = ∫(cos, (0,1), alg)
+        @set! alg.rng = MersenneTwister(1)
+        res2 = ∫(cos, (0,1), alg)
+        @test res1 === res2
+    end
+end
 
 @testset "Domain" begin
     dom = Domain((1f0, 2f0))
@@ -35,6 +49,8 @@ end
     @test typeof(est.value) === typeof(v)
     @test typeof(est.std)   === typeof(est.value)
 end
+
+# @testset "
 
 function isconsistent(truth, est; nstd=6, kw_approx...)
     val = est.value
@@ -103,7 +119,7 @@ end
 
 @testset "Ball $(typeof(alg))" for alg in [
     MCVanilla(10^4),
-    Vegas(10^4)]
+    Vegas(10^4, rng=MersenneTwister(1))]
 
     f(x) = norm(x) < 1 ? 1. : 0.
     est = ∫(f, (-2,2), alg)

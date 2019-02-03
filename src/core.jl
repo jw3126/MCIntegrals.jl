@@ -6,13 +6,16 @@ using QuickTypes: @qstruct
 using ArgCheck
 using LinearAlgebra, Statistics
 using StaticArrays
+using Base.Threads: @threads
+using Setfield: @settable
+
 import Random
 
 abstract type MCAlgorithm end
 
-@qstruct MCVanilla{R}(
+@settable @qstruct MCVanilla{R}(
         neval::Int64=10^6,
-        rng::R=Random.GLOBAL_RNG,
+        rng::R=GLOBAL_PAR_RNG,
     ) do
         @argcheck neval > 2
 end <: MCAlgorithm
@@ -91,9 +94,9 @@ Damping for quantile estimation as proposed in original Vegas Paper by Lepage.
     alpha::T=1) <: VegasDamping
 
 # TODO renames, this is not really Vegas algorithm
-@qstruct Vegas{RNG,REG}(
-        neval::Int=10^4,
-        rng::RNG=Random.GLOBAL_RNG,
+@settable @qstruct Vegas{RNG,REG}(
+        neval::Int=10^4;
+        rng::RNG=GLOBAL_PAR_RNG,
         regularization::REG=LepageDamping(),
     ) do
         @argcheck neval > 2
@@ -305,6 +308,54 @@ function mc_kernel(f, rng::AbstractRNG, dom; neval)
     var_fmean = var_f / N
     std = sqrt.(var_fmean)
     (value = mean, std=std)
+end
+
+function mc_kernel(f, p::ParallelRNG, dom; neval)
+    rngs = p.rngs
+    res1 = mc_kernel(f, rngs[1], dom, neval=2)
+    T = typeof(res1)
+    nthreads = length(rngs)
+    results = Vector{T}(undef, nthreads)
+    neval_i = ceil(Int, neval / nthreads)
+    @threads for i in 1:nthreads
+        res = mc_kernel(f, rngs[i], dom, neval=neval_i)
+        results[i] = res
+    end
+    reduce(fuse, results)
+end
+
+function fuse(res1, res2)
+    var1 = res1.std .^ 2
+    var2 = res2.std .^ 2
+    w1, w2 = fusion_weights(var1, var2)
+    (
+        value = @.(w1 * res1.value + w2*res2.value),
+        std = @.(sqrt(w1^2*var1 + w2^2*var2))
+    )
+end
+
+function fusion_weights(var1::AbstractVector, var2::AbstractVector)
+    pairs = fusion_weights_scalar.(var1, var2)
+    first.(pairs), last.(pairs)
+end
+
+function fusion_weights(var1, var2)
+    fusion_weights_scalar(var1, var2)
+end
+
+function fusion_weights_scalar(var1, var2)
+    z = zero(var1)
+    o = one(var1)
+    if iszero(var1)
+        (o, z)
+    elseif iszero(var2)
+        (z,o)
+    else
+        p1 = o/var1
+        p2 = o/var2
+        p  = p1 + p2
+        (p1/p, p2/p)
+    end
 end
 
 function default_grid_size(dom::Domain{N}) where {N}
