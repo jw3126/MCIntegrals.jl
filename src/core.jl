@@ -56,23 +56,24 @@ function uniform(dom::Domain)
     dom.lower .+ rand(V) .* Δ
 end
 
-function integral(f, domain, alg=Vegas())
-    integral_dom(f, domain, alg)
+function integral(f, dom, alg=Vegas())
+    f2, dom2, alg2 = resolve_domain(f, dom, alg)
+    integral_kernel(f2, dom2, alg2)
 end
 
-function integral_dom(f, dom, alg)
-    integral_alg(f, Domain(dom), alg)
+function resolve_domain(f, dom, alg)
+    f, Domain(dom), alg
 end
 
-function integral_dom(f, I::NTuple{2,Number}, alg)
+function resolve_domain(f, I::NTuple{2,Number}, alg)
     f_v = f ∘ first
     dom = Domain(I)
-    integral_alg(f_v, dom, alg)
+    f_v, dom, alg
 end
 
 const ∫ = integral
 
-function integral_alg(f, dom, alg::MCVanilla)
+function integral_kernel(f, dom::Domain, alg::MCVanilla)
     N = alg.neval
     x = uniform(dom)
     y = f(x)
@@ -228,7 +229,7 @@ function estimate_cdf(histogram, r::VegasDamping)
     CDF(histogram.walls, cdf_vals)
 end
 
-function tune(f, iq::VegasGrid; 
+function tuneonce(f, iq::VegasGrid; 
               neval=1000, 
               outsize=size(iq),
               regularization::VegasDamping=LepageDamping(),
@@ -263,7 +264,7 @@ function tune(f, iq::VegasGrid;
     VegasGrid(bdries_new)
 end
 
-function integral_alg(f, iq::VegasGrid, alg::Vegas)
+function integral_kernel(f, iq::VegasGrid, alg::Vegas)
     N = alg.neval
     sum = 0.
     sum2 = 0.
@@ -299,13 +300,28 @@ function equidistant_grid(
     VegasGrid(bdries)
 end
 
-function integral_alg(f, dom::Domain, alg::Vegas)
-    iq = equidistant_grid(dom)
-    iq = tune(f, iq, neval=2000)
-    iq = tune(f, iq, neval=2000)
-    iq = tune(f, iq, neval=2000)
-    iq = tune(f, iq, neval=2000)
-    iq = tune(f, iq, neval=2000)
-    integral_alg(f, iq, alg)
+function initvr(f, dom::Domain, alg::Vegas)
+    equidistant_grid(dom)
 end
 
+function tune(f, iq::VegasGrid, alg::Vegas)
+    iq = tuneonce(f, iq, neval=2000)
+    iq = tuneonce(f, iq, neval=2000)
+    iq = tuneonce(f, iq, neval=2000)
+    iq = tuneonce(f, iq, neval=2000)
+    iq = tuneonce(f, iq, neval=2000)
+end
+
+function tune(f, dom::Domain, alg)
+    iq = initvr(f, dom, alg)
+    tune(f, iq, alg)
+end
+
+function integral_kernel(f, dom::Domain, alg::Vegas)
+    iq = tune(f, dom, alg)
+    integral_kernel(f, iq, alg)
+end
+
+function resolve_domain(f, dom::VegasGrid, alg::Vegas)
+    f, dom, alg
+end

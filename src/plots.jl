@@ -31,6 +31,10 @@ end
     # seriestype --> :vline
     # walls = first(grid.boundaries)
     xs = first(grid.boundaries)
-    ys = 1 ./ spacings(xs)
-    xs_ys_barline(xs, ys)
+    if get(plotattributes, :seriestype, nothing) == :vline
+        xs
+    else
+        ys = 1 ./ spacings(xs)
+        xs_ys_barline(xs, ys)
+    end
 end
