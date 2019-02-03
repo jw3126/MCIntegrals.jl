@@ -6,6 +6,7 @@ using LinearAlgebra
 using Random
 using Setfield
 using Cuba: vegas
+using HCubature
 
 function isconsistent(truth, est; nstd=6, kw_approx...)
     val = est.value
@@ -86,6 +87,7 @@ end
     Vegas(10^1),
     MCVanilla(10^1),
     CubaAlg(vegas),
+    HCubatureAlg(),
     ]
     for dim in 1:4
         for _ in 1:10
