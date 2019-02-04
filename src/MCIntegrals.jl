@@ -3,6 +3,7 @@ using Requires
 
 include("rng.jl")
 include("core.jl")
+include("vegas.jl")
 include("cuba.jl")
 include("plots.jl")
 
