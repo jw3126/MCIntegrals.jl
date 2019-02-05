@@ -1,5 +1,5 @@
 
-export MCVanilla, Vegas, Domain
+export MCVanilla, Domain
 export integral, ∫
 
 using QuickTypes: @qstruct

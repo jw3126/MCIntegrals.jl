@@ -18,7 +18,6 @@ function isconsistent(truth, est; nstd=6, kw_approx...)
     end
 end
 
-
 ALGS = [Vegas(), MCVanilla()]
 
 @testset "RNG Reproducibility" begin
@@ -41,7 +40,7 @@ end
 
 @testset "exotic types $(typeof(alg))" for alg in [
         MCVanilla(10),
-        Vegas(10), 
+        Vegas(100),
         CubaAlg(vegas),
        ]
     est = ∫(identity, (0f0, 1f0), alg)
@@ -66,25 +65,8 @@ end
     @test typeof(est.std)   === typeof(est.value)
 end
 
-@testset "std bernoulli" begin
-    p = 0.1 + 0.8*rand()
-    f = x -> 0 <= x <= p
-    
-    neval = 1000
-    true_value = p
-    true_std = sqrt(p*(1-p)/neval)
-    
-    est = ∫(f, (0,1), MCVanilla(neval))
-    @test est.std ≈ true_std rtol=0.2
-    @test isconsistent(true_value, est)
-    
-    est = ∫(f, (0,1), Vegas(neval))
-    @test est.std < 0.2*true_std
-    @test isconsistent(true_value, est)
-end
-
 @testset "constant $(typeof(alg))" for alg in [
-    Vegas(10^1),
+    Vegas(10^2),
     MCVanilla(10^1),
     CubaAlg(vegas),
     HCubatureAlg(),
@@ -139,6 +121,25 @@ end
         end
     end
 end
+
+@testset "std bernoulli" begin
+    p = 0.1 + 0.8*rand()
+    f = x -> 0 <= x <= p
+    
+    neval = 1000
+    true_value = p
+    true_std = sqrt(p*(1-p)/neval)
+    
+    est = ∫(f, (0,1), MCVanilla(neval))
+    @test est.std ≈ true_std rtol=0.2
+    @test isconsistent(true_value, est)
+    
+    est = ∫(f, (0,1), Vegas(neval))
+    @test est.std < 0.2*true_std
+    @test isconsistent(true_value, est)
+end
+
+
 
 @testset "Ball $(typeof(alg))" for alg in [
     MCVanilla(10^4),
