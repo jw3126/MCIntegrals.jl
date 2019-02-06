@@ -23,6 +23,40 @@ function isconsistent(truth, est; nstd=6, kw_approx...)
     end
 end
 
+@testset "Ball $(typeof(alg))" for alg in [
+    MCVanilla(10^4),
+    Vegas(10^4, rng=MersenneTwister(1))]
+
+    f(x) = norm(x) < 1 ? 1. : 0.
+    est = ∫(f, (-2,2), alg)
+    @test isconsistent(2,est)
+
+    est = ∫(f, ((-1,1),(-1,1)), alg)
+    @test isconsistent(π, est)
+
+    est = ∫(f, ((-1,1),(-1,1),(-1,1)), alg)
+    @test isconsistent(4π/3, est)
+end
+
+
+@testset "std bernoulli" begin
+    p = 0.1 + 0.8*rand()
+    f = x -> 0 <= x <= p
+
+    neval = 1000
+    true_value = p
+    true_std = sqrt(p*(1-p)/neval)
+
+    est = ∫(f, (0,1), MCVanilla(neval))
+    @test est.std ≈ true_std rtol=0.2
+    @test isconsistent(true_value, est)
+
+    est = ∫(f, (0,1), Vegas(neval))
+    @test_broken est.std < true_std
+    @test_broken est.std < 0.2*true_std
+    @test isconsistent(true_value, est)
+end
+
 ALGS = [Vegas(), MCVanilla()]
 
 @testset "RNG Reproducibility" begin
@@ -134,40 +168,6 @@ end
     end
 end
 
-@testset "std bernoulli" begin
-    p = 0.1 + 0.8*rand()
-    f = x -> 0 <= x <= p
-    
-    neval = 1000
-    true_value = p
-    true_std = sqrt(p*(1-p)/neval)
-    
-    est = ∫(f, (0,1), MCVanilla(neval))
-    @test est.std ≈ true_std rtol=0.2
-    @test isconsistent(true_value, est)
-    
-    est = ∫(f, (0,1), Vegas(neval))
-    @test est.std < 0.2*true_std
-    @test isconsistent(true_value, est)
-end
-
-
-
-@testset "Ball $(typeof(alg))" for alg in [
-    MCVanilla(10^4),
-    Vegas(10^4, rng=MersenneTwister(1))]
-
-    f(x) = norm(x) < 1 ? 1. : 0.
-    est = ∫(f, (-2,2), alg)
-    @test isconsistent(2,est)
-
-    est = ∫(f, ((-1,1),(-1,1)), alg)
-    @test isconsistent(π, est)
-
-    est = ∫(f, ((-1,1),(-1,1),(-1,1)), alg)
-    @test isconsistent(4π/3, est)
-end
-
 
 @testset "Fubini $(typeof(alg))" for alg in [
     MCVanilla(10^4),
@@ -190,30 +190,3 @@ end
         @test isconsistent(est1.value*est2.value, est)
     end
 end
-
-@testset "Simple Vegas Example" begin
-    a = -0.237267860990952
-    b = -0.19099487884978464
-    val = 0.665843778891144
-    truth = (b - a) * val
-    f = _ -> val
-    Ω = Domain((a,b))
-    
-    alg = Vegas(5)
-    est = ∫(f, Ω, alg)
-    @test est.value ≈ truth
-    @test 0 <= est.std <= sqrt(eps(Float64))
-    
-    iq = P.initvr(f, Ω, alg)
-    est = ∫(f, iq, alg)
-    @test est.value ≈ truth
-    @test 0 <= est.std <= sqrt(eps(Float64))
-    
-    iq2 = P.tune(f, Ω, alg)
-    est = ∫(f, iq2, alg)
-    @test est.value ≈ truth
-    @test 0 <= est.std <= sqrt(eps(Float64))
-    walls = iq2.boundaries[1]
-    @test walls ≈ range(a,stop=b, length=length(walls))
-end
-

@@ -293,7 +293,12 @@ function estimate_pdf(h::VegasHist, axis::Int, r::LepageDamping)
     pdf, isfinite = estimate_pdf(h, axis, NoDamping())
     isfinite || return (pdf, false)
     updf = map(pdf) do p
-        ((p - 1) / log(p))^r.alpha
+        ret = ((p - 1) / log(p))^r.alpha
+        if iszero(p)
+            zero(ret)
+        else
+            ret
+        end
     end
     (normalize!(updf, 1), true)
 end
