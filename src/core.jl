@@ -120,12 +120,16 @@ function mc_kernel(f, rng::AbstractRNG, dom; neval)
         sum2 += y.^2
     end
     
-    mean = sum/N
-    var_f = (sum2/N) - mean .^2
-    var_f = max(zero(var_f), var_f)
-    var_fmean = var_f / N
-    std = sqrt.(var_fmean)
-    (value = mean, std=std, neval=N)
+    mean, var = mean_var(sum=sum,sum2=sum2,count=N)
+    (value = mean, std=sqrt.(var), neval=N)
+end
+
+function mean_var(;sum, sum2, count)
+    mean = sum ./ count
+    mean2 = sum2 ./ count
+    var = (mean2 .- mean.^2) ./ count
+    var = max.(zero(var), var)
+    (mean = mean, var=var)
 end
 
 function mc_kernel(f, p::ParallelRNG, dom; neval)

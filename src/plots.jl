@@ -1,4 +1,6 @@
 using RecipesBase
+using Random: GLOBAL_RNG
+export SamplingPlot
 
 # function xs_ys_barline(walls, ys)
 #     @argcheck length(walls) == length(ys) + 1
@@ -59,4 +61,27 @@ end
         ys = 1 ./ spacings(xs)
         xs_ys_barline(xs, ys)
     end
+end
+
+@qstruct SamplingPlot(f, domain; neval::Int=100, axis::Int=1)
+
+@recipe function plot(p::SamplingPlot)
+    seriestype --> :scatter
+    axis = p.axis
+    f = p.f; dom = p.domain
+    s = draw(GLOBAL_RNG, dom)
+    pt = s.position
+    x = pt[p.axis]
+    y = f(pt) * s.weight
+    xs = typeof(x)[]
+    ys = typeof(y)[]
+    for _ in 1:p.neval
+        s = draw(GLOBAL_RNG, dom)
+        pt =  s.position
+        y = f(x) * s.weight
+        x = pt[p.axis]
+        push!(xs, x)
+        push!(ys, y)
+    end
+    xs, ys
 end

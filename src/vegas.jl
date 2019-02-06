@@ -13,9 +13,9 @@ Damping for quantile estimation as proposed in original Vegas Paper by Lepage.
 
 # TODO renames, this is not really Vegas algorithm
 @settable @qstruct Vegas{RNG,REG}(
-        neval::Int=10^4;
-        nbins::Int = max(2, neval ÷ 100), # number of bins along each dimension
-        niter::Int=15,
+        neval::Int=10^5;
+        niter::Int=10,
+        nbins::Int=max(2, neval ÷ (niter*100)), # number of bins along each dimension
         ndrop::Int=niter÷2,
         rng::RNG=GLOBAL_PAR_RNG,
         regularization::REG=LepageDamping(),
@@ -106,6 +106,7 @@ struct VegasVR{N,D,T}
     grid::VegasGrid{N,D}
     values::Vector{T}
     vars::Vector{T}
+    neval::Int64
 end
 
 @qstruct CDF{P,V}(
@@ -186,7 +187,7 @@ end
 
 function create_vegas_hist(f, rng::AbstractRNG, vr, alg)
     h = init_vegas_hist(f, vr)
-    fill_vegas_hist!(f,h,rng; neval=alg.neval)
+    fill_vegas_hist!(f,h,rng; neval=ceil(Int,alg.neval/alg.niter))
 end
 
 function create_vegas_hist(f, p::ParallelRNG, vr, alg)
@@ -194,7 +195,7 @@ function create_vegas_hist(f, p::ParallelRNG, vr, alg)
     nthreads = length(rngs)
     h1 = init_vegas_hist(f, vr)
     hists = [deepcopy(h1) for _ in 1:nthreads]
-    neval_i = ceil(Int, alg.neval / nthreads)
+    neval_i = ceil(Int, alg.neval / alg.niter / nthreads)
     @threads for i in 1:nthreads
         fill_vegas_hist!(f, hists[i], rngs[i], neval=neval_i)
     end
@@ -245,11 +246,10 @@ end
 
 function estimate_integral(h::VegasHist)
     count = sum(h.counts[1])::Int64
-    mean = h.sum[] ./ count
-    mean2 = h.sum2[] ./ count
-    var = (mean2 .- mean.^2) ./ count
-    var = max.(zero(var), var)
-    (value = mean, var=var)
+    mean, var = mean_var(sum=h.sum[],
+                         sum2=h.sum2[],
+                         count=count)
+    (value = mean, var=var, neval=count)
 end
 
 function update_vegasvr(vr::VegasVR, h::VegasHist, alg::Vegas)
@@ -260,10 +260,10 @@ function update_vegasvr(vr::VegasVR, h::VegasHist, alg::Vegas)
         quantiles(cdf, nq)
     end
     grid = VegasGrid(boundaries)
-    val, var = estimate_integral(h)
+    val, var, neval = estimate_integral(h)
     values = push!(copy(vr.values), val)
     vars   = push!(copy(vr.vars  ), var)
-    VegasVR(grid, values, vars)
+    VegasVR(grid, values, vars, vr.neval + neval)
 end
 
 function estimate_pdf(h::VegasHist, axis::Int, ::NoDamping)
@@ -274,7 +274,7 @@ function estimate_pdf(h::VegasHist, axis::Int, ::NoDamping)
         axis = $axis
         counts[$axis] = $(h.counts[axis])
         neval = $(sum(h.counts[1]))
-        Consider increasing `neval` or decreasing `gridsize`.
+        Consider increasing `neval` or decreasing `nbins`.
         """
         throw(ArgumentError(msg))
     end
@@ -332,7 +332,8 @@ function initvr(f, dom::Domain, alg::Vegas)
     s = draw_x_index_cell(alg.rng, iq)
     y = (f(s.position).^2) ./ 2
     T = typeof(y)
-    VegasVR(iq, T[], T[])
+    neval = 0
+    VegasVR(iq, T[], T[], neval)
 end
 
 function tune(f, vr::VegasVR, alg::Vegas)
@@ -345,6 +346,52 @@ end
 function tune(f, dom::Domain, alg)
     vr = initvr(f, dom, alg)
     tune(f, vr, alg)
+end
+
+# function div_pos(x, y)
+#     ret = x / y
+#     if iszero(y) & (!iszero(x))
+#         typeof(ret)(Inf)
+#     else
+#         ret
+#     end
+# end
+function combine_scalar(val1, var1, val2, var2)
+    p1 = 1/var1
+    p2 = 1/var2
+    wt1  = p1 / (p1 + p2)
+    wt2 = p2 / (p1 + p2)
+    val = wt1*val1 + wt2*val2
+    var = (wt1^2)*var1 + (wt2^2)*var2
+    T = typeof((val, var))
+    ret = if iszero(var1) & iszero(var2)
+        @assert val1 ≈ val2
+        (val1, var1)
+    elseif iszero(var1)
+        (val1, var1)
+    elseif iszero(var2)
+        (val2, var2)
+    else
+        (val, var)
+    end
+    T(ret)
+end
+
+function combine_vec(val1, var1, val2, var2)
+    pairs = combine_scalar.(val1, var1, val2, var2)
+    first.(pairs), last.(pairs)
+end
+
+function combine(nt1, nt2) # named tuple val var
+    val1, var1 = nt1
+    val2, var2 = nt2
+    
+    value, var = if nt1.value isa AbstractVector
+        combine_vec(val1,var1,val2,var2)
+    else
+        combine_scalar(val1,var1,val2,var2)
+    end
+    (value=value, var=var)
 end
 
 function finish_integral(vr::VegasVR, alg::Vegas)
@@ -360,7 +407,11 @@ function finish_integral(vr::VegasVR, alg::Vegas)
         var .* p .* val
     end
     value = sum(weighted_values)
-    (value=value, std=std)
+    pairs = map(values, vars) do val, var
+        (value=val, var=var)
+    end
+    value, var = reduce(combine, pairs)
+    (value=value, std=sqrt.(var), neval=vr.neval)
 end
 
 function integral_kernel(f, dom::Domain, alg::Vegas)
