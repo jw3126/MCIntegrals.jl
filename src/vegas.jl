@@ -300,7 +300,9 @@ function estimate_pdf(h::VegasHist, axis::Int, r::LepageDamping)
             ret
         end
     end
-    (normalize!(updf, 1), true)
+    pdf = normalize!(updf, 1)
+    @assert !any(isnan.(pdf))
+    (pdf, true)
 end
 
 function estimate_cdf(h, axis::Int, alg::Vegas)
